@@ -1,0 +1,22 @@
+{
+  "name": "cure-plus-client-agent",
+  "version": "1.0.0",
+  "description": "Runs on a client machine - pulls a packaged production build from a transfer.it link and installs it into that site's served build folder.",
+  "main": "src/index.mjs",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "chalk": "^5.6.2",
+    "dotenv": "^17.4.2",
+    "playwright": "^1.60.0"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "install-once": "node src/installOnce.mjs",
+    "discover": "node src/discover.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

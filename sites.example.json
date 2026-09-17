@@ -1,0 +1,25 @@
+{
+  "clientId": "exsys136",
+  "sites": [
+    {
+      "name": "webapps-9090",
+      "servedBuildFolderPath": "D:\\TomCat9\\webapps\\ROOT",
+      "reactAppOverrides": {
+        "REACT_APP_BASE_URL": "https://exsys136.example.com",
+        "REACT_APP_API_URL": "https://exsys136.example.com/ords/",
+        "REACT_APP_EXSYS_NPHIES_WEB_SERVER_URL": "http://xxx.xxx.xxx.xxx:5000",
+        "REACT_APP_EXSYS_NPHIES_WEB_SERVER_API_KEY": ""
+      }
+    },
+    {
+      "name": "webapps1-9595",
+      "servedBuildFolderPath": "D:\\TomCat9_test\\webapps1\\ROOT",
+      "reactAppOverrides": {
+        "REACT_APP_BASE_URL": "https://exsys136.example.com:9595",
+        "REACT_APP_API_URL": "https://exsys136.example.com:9595/ords/",
+        "REACT_APP_EXSYS_NPHIES_WEB_SERVER_URL": "http://xxx.xxx.xxx.xxx:5000",
+        "REACT_APP_EXSYS_NPHIES_WEB_SERVER_API_KEY": ""
+      }
+    }
+  ]
+}
