@@ -6,11 +6,15 @@
  * { authorization, data: [...] } where each row's own `record_status` is
  * "n" (insert), "u" (update) or "d" (delete). Every exsys-facing module in
  * this project (fetchPendingJob.mjs, updateDeployJob.mjs,
- * registerSitesWithExsys.mjs) calls through here instead of building its
- * own fetch() calls, so the auth header, base URL, and error handling only
+ * clientSitesRegistry.mjs) calls through here instead of building its own
+ * fetch() calls, so the auth header, base URL, and error handling only
  * exist once.
  *
+ * Uses node-fetch rather than the global fetch() - client machines run
+ * Node 16.16.0, which has no built-in fetch (added in Node 18+).
+ *
  */
+import fetch from "node-fetch";
 import { EXSYS_API_BASE_URL, EXSYS_AUTHORIZATION } from "./constants.mjs";
 
 export const exsysGet = async (apiPath) => {
