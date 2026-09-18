@@ -1,20 +1,21 @@
 /*
  *
  * `pollLoop`: checks the central server for a pending install job addressed
- * to this machine, installs it onto the one site the job targets (job.siteId,
- * matching a site's `name` in sites.json - see the admin "install build"
- * picker design), and streams progress back onto the job's row.
+ * to this machine, installs it onto the one site the job targets
+ * (job.siteName, matching a site's `name` in sites.json - see the admin
+ * "install build" picker design), and streams progress back onto the
+ * job's row.
  *
  */
 import { loadConfig } from "./config.mjs";
 import { POLL_INTERVAL_MS } from "./constants.mjs";
 import fetchPendingJob from "./fetchPendingJob.mjs";
 import updateDeployJob from "./updateDeployJob.mjs";
-import { updateSiteActiveBuild } from "./clientSitesRegistry.mjs";
+import { getClientSiteRow, updateSiteActiveBuild } from "./clientSitesRegistry.mjs";
 import installBuild from "./installBuild.mjs";
 import createStreamingLogger from "./createStreamingLogger.mjs";
 import createLogger from "./createLogger.mjs";
-import formatDateTime from "./formatDateTime.mjs";
+import formatDateTime, { parseDateTime } from "./formatDateTime.mjs";
 
 const baseLogger = createLogger("poll-loop");
 
@@ -28,17 +29,17 @@ const runPendingJobIfAny = async () => {
 
   if (!job) return;
 
-  const site = sites.find((s) => s.name === job.siteId);
+  const site = sites.find((s) => s.name === job.siteName);
 
   if (!site) {
     baseLogger.error(
-      `Job ${job.jobId} targets site "${job.siteId}", which isn't configured on this machine (known sites: ${sites.map((s) => s.name).join(", ")})`,
+      `Job ${job.jobId} targets site "${job.siteName}", which isn't configured on this machine (known sites: ${sites.map((s) => s.name).join(", ")})`,
     );
 
     await updateDeployJob({
       ...job,
       status: "failure",
-      errorMessage: `Unknown site "${job.siteId}" on this machine`,
+      errorMessage: `Unknown site "${job.siteName}" on this machine`,
       finishedAt: formatDateTime(),
     });
 
@@ -79,7 +80,41 @@ const runPendingJobIfAny = async () => {
     pushProgress,
   );
 
-  const result = await installBuild(job.buildUrl, site, streamingLogger);
+  // Best-effort: this site's *previous* lastUpdatedAt, so installBuild can
+  // carry it forward into the new build's own
+  // REACT_APP_LAST_BUILD_UPLOADED_TO_CLIENT_AT (see installBuild.mjs) - a
+  // lookup failure here shouldn't block the install, it just means that key
+  // comes out blank on this one build.
+  const existingSiteRow = await getClientSiteRow(clientId, site.name).catch(
+    (error) => {
+      baseLogger.warning(
+        `Could not look up "${site.name}"'s previous lastUpdatedAt: ${error.message}`,
+      );
+      return undefined;
+    },
+  );
+
+  // A rollback (or just picking an older build via "install build") installs
+  // a build that's chronologically *older* than what's currently live. In
+  // that case the site's lastUpdatedAt would be later than this build's own
+  // creation date, which would hand ReleaseNotesModal.tsx an inverted range
+  // (start-after-end) - so we deliberately leave
+  // REACT_APP_LAST_BUILD_UPLOADED_TO_CLIENT_AT blank instead, which makes it
+  // fall back to its own default (30 days before the build's own date).
+  const isDowngrade =
+    !!existingSiteRow?.activeBuildTime &&
+    parseDateTime(job.buildTime) < parseDateTime(existingSiteRow.activeBuildTime);
+
+  const result = await installBuild(
+    job.buildUrl,
+    {
+      ...site,
+      previousBuildUploadedAt: isDowngrade
+        ? ""
+        : existingSiteRow?.lastUpdatedAt,
+    },
+    streamingLogger,
+  );
 
   if (result.status === "success") {
     // Best-effort, same as progress pushes above - the install itself
@@ -88,7 +123,7 @@ const runPendingJobIfAny = async () => {
     try {
       await updateSiteActiveBuild({
         clientId,
-        siteId: site.name,
+        siteName: site.name,
         buildId: job.buildId,
         buildTime: job.buildTime,
       });

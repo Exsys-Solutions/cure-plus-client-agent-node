@@ -23,7 +23,7 @@ import createLogger from "./createLogger.mjs";
 // each line back onto the job's row - see createStreamingLogger.mjs.
 const installBuild = async (
   buildUrl,
-  { servedBuildFolderPath, envConfigOverrides },
+  { servedBuildFolderPath, envConfigOverrides, previousBuildUploadedAt },
   logger = createLogger("install-build"),
 ) => {
   const workDir = await fs.mkdtemp(
@@ -58,7 +58,21 @@ const installBuild = async (
     }
 
     logger.info("Patching env-config.js with this site's settings");
-    await patchEnvConfig(envConfigPath, envConfigOverrides);
+
+    // This is the *previous* build's install date for this site - i.e.
+    // this site's ex_client_sites_pkg.lastUpdatedAt as it was just before
+    // this install (see pollLoop.mjs, which looks it up via
+    // getClientSiteRow before calling installBuild). AppReleaseHistoryModal
+    // /ReleaseNotesModal.tsx read this back as the start of the "what's new
+    // since your last update" range, so it must be the OLD value, not this
+    // install's own timestamp - once this install succeeds,
+    // updateSiteActiveBuild overwrites lastUpdatedAt with the new one for
+    // next time. Just the date portion (dd-mm-yyyy) is kept, dropping the
+    // time-of-day half of the dd-mm-yyyy hh:mm am/pm value.
+    await patchEnvConfig(envConfigPath, {
+      ...envConfigOverrides,
+      REACT_APP_LAST_BUILD_UPLOADED_TO_CLIENT_AT: (previousBuildUploadedAt || "").split(" ")[0],
+    });
 
     const backupPath = `${servedBuildFolderPath}.previous`;
 

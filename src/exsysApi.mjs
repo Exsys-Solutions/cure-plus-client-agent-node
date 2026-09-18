@@ -17,10 +17,13 @@
 import fetch from "node-fetch";
 import { EXSYS_API_BASE_URL, EXSYS_AUTHORIZATION } from "./constants.mjs";
 
-export const exsysGet = async (apiPath) => {
-  const response = await fetch(
-    `${EXSYS_API_BASE_URL}/${apiPath}?authorization=${EXSYS_AUTHORIZATION}`,
-  );
+export const exsysGet = async (apiPath, params = {}) => {
+  const query = new URLSearchParams({
+    authorization: EXSYS_AUTHORIZATION,
+    ...params,
+  });
+
+  const response = await fetch(`${EXSYS_API_BASE_URL}/${apiPath}?${query}`);
 
   if (!response.ok) {
     throw new Error(`GET ${apiPath} failed: HTTP ${response.status}`);

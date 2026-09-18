@@ -15,9 +15,33 @@ import { exsysGet, exsysDml } from "./exsysApi.mjs";
 import { EXSYS_API_PATHS } from "./constants.mjs";
 import formatDateTime from "./formatDateTime.mjs";
 
-const fetchClientSiteRows = async (clientId) => {
-  const data = await exsysGet(EXSYS_API_PATHS.GET_CLIENT_SITES);
-  return data.filter((row) => row.clientId === clientId);
+// `siteName` is optional - pass it when only one site's row is needed
+// (getClientSiteRow/updateSiteActiveBuild below) so the backend can narrow
+// the result set to a single row; omit it for a bulk fetch of every site
+// registered under this clientId (registerSitesWithExsys). Either way the
+// client-side filter stays too, as a safety net in case those params ever
+// get ignored - same pattern as fetchPendingJob.mjs.
+const fetchClientSiteRows = async (clientId, siteName) => {
+  const data = await exsysGet(EXSYS_API_PATHS.GET_CLIENT_SITES, {
+    clientId,
+    ...(siteName ? { siteName } : {}),
+  });
+
+  return data.filter(
+    (row) =>
+      row.clientId === clientId && (!siteName || row.siteName === siteName),
+  );
+};
+
+// Used before installing a new build, to read this site's *previous*
+// lastUpdatedAt - the moment the build about to be replaced was itself
+// installed - so the new build's own REACT_APP_LAST_BUILD_UPLOADED_TO_CLIENT_AT
+// can be set to it (installBuild.mjs). That's what lets the release-notes
+// modal show "what changed since your last update" instead of always
+// falling back to its default 30-day window.
+export const getClientSiteRow = async (clientId, siteName) => {
+  const rows = await fetchClientSiteRows(clientId, siteName);
+  return rows.find((row) => row.siteName === siteName);
 };
 
 // Registers this machine's discovered sites centrally, purely so the picker
@@ -57,18 +81,17 @@ export const registerSitesWithExsys = async (clientId, discoveredSites) => {
 // - see fetchPendingJob.mjs.
 export const updateSiteActiveBuild = async ({
   clientId,
-  siteId,
+  siteName,
   buildId,
   buildTime,
 }) => {
-  const existingRows = await fetchClientSiteRows(clientId);
-  const existing = existingRows.find((row) => row.siteName === siteId);
+  const existing = await getClientSiteRow(clientId, siteName);
 
   await exsysDml(EXSYS_API_PATHS.CLIENT_SITES_DML, [
     {
       ...existing,
       clientId,
-      siteName: siteId,
+      siteName,
       activeBuildId: buildId,
       activeBuildTime: buildTime,
       lastUpdatedAt: formatDateTime(),

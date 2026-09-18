@@ -56,10 +56,46 @@ const runDiscovery = async (logger) => {
       )
     : {};
 
+  // Merge, don't replace - a human is expected to hand-edit sites.json
+  // between cycles (fix a port in REACT_APP_BASE_URL/API_URL, set
+  // REACT_APP_EXSYS_NPHIES_WEB_SERVER_URL, add a not-yet-deployed site
+  // ahead of its first install), and this run must never throw that away:
+  //  - a site discovery DID find this cycle keeps its own name/
+  //    servedBuildFolderPath (those are derived from server.xml, always
+  //    trust the fresh scan), but for reactAppOverrides, whatever's already
+  //    in the existing sites.json entry wins field-by-field over discovery's
+  //    freshly computed/read values - discovery's own values only fill in
+  //    a field that has no existing value yet (a genuinely new site, seen
+  //    for the very first time).
+  //  - a site discovery did NOT find this cycle (not deployed yet, or a
+  //    transient scan miss - same reasoning as the discovered.length === 0
+  //    case above) is carried over untouched rather than dropped.
+  const existingSitesByName = new Map(
+    (existing?.sites || []).map((site) => [site.name, site]),
+  );
+
+  const mergedDiscoveredSites = discovered.map((site) => ({
+    ...site,
+    reactAppOverrides: {
+      ...site.reactAppOverrides,
+      ...existingSitesByName.get(site.name)?.reactAppOverrides,
+    },
+  }));
+
+  const discoveredNames = new Set(discovered.map((site) => site.name));
+
+  const preservedSites = (existing?.sites || []).filter(
+    (site) => !discoveredNames.has(site.name),
+  );
+
   fs.writeFileSync(
     SITES_CONFIG_PATH,
     JSON.stringify(
-      { clientId, ...machineDefaults, sites: discovered },
+      {
+        clientId,
+        ...machineDefaults,
+        sites: [...mergedDiscoveredSites, ...preservedSites],
+      },
       null,
       2,
     ),

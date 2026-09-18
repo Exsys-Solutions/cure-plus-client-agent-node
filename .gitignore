@@ -1,3 +1,5 @@
 node_modules
 sites.json
 .env
+EXSYS_API_SQL.sql
+EXSYS_API_HANDOFF.pdf

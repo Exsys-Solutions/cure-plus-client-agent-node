@@ -72,50 +72,42 @@ const findTomcatInstances = async (installDirs, logger) => {
   return instances;
 };
 
-// A deployed site is any folder directly under a Tomcat instance's appBase
-// that has an env-config.js - that's the signal it's an actual deployed
-// cureplus build, not Tomcat's own sample/manager webapps or an empty
-// context folder. `name` matches the appBase-port convention (e.g.
-// "webapps-9090"), with the context folder name appended when it isn't the
-// default ROOT context, so multiple non-root contexts on the same instance
-// stay distinguishable.
-const findDeployedSites = async ({ installDir, port, appBase }, siteUrl) => {
-  const appBaseDir = path.join(installDir, appBase);
-  let entries;
+// Every Tomcat instance in this setup deploys its one site as the ROOT
+// context - never a named sub-context - so a site's build always lives at
+// <installDir>\<appBase>\ROOT, matching the real layout confirmed on an
+// actual client machine (D:\TomCat9\webapps\ROOT, a second instance's
+// D:\TomCat9_test\webapps1\ROOT). That's also where a new build gets
+// extracted to - see installBuild.mjs. Requiring env-config.js to already
+// exist there is what tells "this instance's site has been deployed at
+// least once" apart from a freshly set-up instance nothing's been pushed
+// to yet - the latter needs a one-time manual sites.json entry, same as any
+// other brand-new site provisioning (see server.xml/port setup).
+const ROOT_CONTEXT_FOLDER = "ROOT";
 
-  try {
-    entries = await fs.readdir(appBaseDir, { withFileTypes: true });
-  } catch {
-    return [];
+const findDeployedSite = async ({ installDir, port, appBase }, siteUrl, logger) => {
+  const servedBuildFolderPath = path.join(installDir, appBase, ROOT_CONTEXT_FOLDER);
+  const envConfigPath = path.join(servedBuildFolderPath, "env-config.js");
+
+  if (!(await pathExists(envConfigPath))) {
+    logger?.warning(
+      `No env-config.js at ${envConfigPath} - skipping (this instance's site may not have been deployed yet)`,
+    );
+    return null;
   }
 
-  const sites = [];
+  const reactAppOverrides = await readEnvConfigOverrides(envConfigPath);
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
+  // Built from BASE_SITE_URL + this instance's own Connector port rather than
+  // trusting whatever was already in env-config.js - the port is the one
+  // thing that's actually known for certain from server.xml.
+  reactAppOverrides.REACT_APP_BASE_URL = `${siteUrl}:${port}`;
+  reactAppOverrides.REACT_APP_API_URL = `${siteUrl}:${port}/ords/`;
 
-    const servedBuildFolderPath = path.join(appBaseDir, entry.name);
-    const envConfigPath = path.join(servedBuildFolderPath, "env-config.js");
-
-    if (!(await pathExists(envConfigPath))) continue;
-
-    const reactAppOverrides = await readEnvConfigOverrides(envConfigPath);
-
-    // Built from BASE_SITE_URL + this instance's own Connector port rather than
-    // trusting whatever was already in env-config.js - the port is the one
-    // thing that's actually known for certain from server.xml.
-    reactAppOverrides.REACT_APP_BASE_URL = `${siteUrl}:${port}`;
-    reactAppOverrides.REACT_APP_API_URL = `${siteUrl}:${port}/ords/`;
-
-    const name =
-      entry.name.toUpperCase() === "ROOT"
-        ? `${appBase}-${port}`
-        : `${appBase}-${port}-${entry.name}`;
-
-    sites.push({ name, servedBuildFolderPath, reactAppOverrides });
-  }
-
-  return sites;
+  return {
+    name: `${appBase}-${port}`,
+    servedBuildFolderPath,
+    reactAppOverrides,
+  };
 };
 
 const discoverSites = async (
@@ -124,13 +116,14 @@ const discoverSites = async (
 ) => {
   const siteUrl = getSiteUrl();
   const instances = await findTomcatInstances(installDirs, logger);
-  const allSites = [];
+  const sites = [];
 
   for (const instance of instances) {
-    allSites.push(...(await findDeployedSites(instance, siteUrl)));
+    const site = await findDeployedSite(instance, siteUrl, logger);
+    if (site) sites.push(site);
   }
 
-  return allSites;
+  return sites;
 };
 
 export default discoverSites;
